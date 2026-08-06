@@ -1,0 +1,13 @@
+{
+  "name": "agentic-dev",
+  "private": true,
+  "type": "module",
+  "description": "Plug-n-play agent pack — file-only, project-local, variant-aware (web/expo). No global config.",
+  "version": "0.1.0",
+  "scripts": {
+    "copy:web": "node scripts/copy.mjs --variant=web",
+    "copy:expo": "node scripts/copy.mjs --variant=expo",
+    "check": "node --check scripts/copy.mjs && node scripts/check.mjs",
+    "check:copy": "node --check scripts/copy.mjs && node scripts/check.mjs"
+  }
+}

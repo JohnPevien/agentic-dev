@@ -1,0 +1,12 @@
+# agentic-dev is file-only; ignore local test targets
+/tmp/
+/tmp-*/
+node_modules/
+.DS_Store
+
+# never ignore variants — they are the product
+!variants/
+!scripts/
+
+# local git-test dirs
+/test-*/
