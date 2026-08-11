@@ -20,16 +20,21 @@ const __dirname = path.dirname(__filename);
 const REPO_ROOT = path.resolve(__dirname, "..");
 
 function usageAndExit(code = 1) {
-  console.error(`Usage: node scripts/copy.mjs --variant=<web|expo> <target-dir> [--force] [--dry-run]
+  console.error(`Usage: node scripts/copy.mjs --variant=<web|expo> <target-dir> [options]
 
 Options:
-  --variant=<name>   Required. Variant folder under variants/ (e.g. web, expo)
-  --force            Overwrite non-merge files that differ (default: skip + WARN)
-  --dry-run          Print what would happen, write nothing
-  --help, -h         Show this help
+  --variant=<name>       Required. Variant folder under variants/ (e.g. web, expo)
+  --agent-config=<mode>  Which agent-tool config to install (default: both)
+                         opencode  -> .opencode/ only (agents, commands, skills, config)
+                         omp       -> .omp/ only (agents, commands, skills, config.yml)
+                         both      -> both trees
+  --force                Overwrite non-merge files that differ (default: skip + WARN)
+  --dry-run              Print what would happen, write nothing
+  --help, -h             Show this help
 
 Examples:
   node scripts/copy.mjs --variant=web /path/to/my-new-web-project
+  node scripts/copy.mjs --variant=web /tmp/my-project --agent-config=omp
   node scripts/copy.mjs --variant=expo /tmp/test-expo --dry-run
   node scripts/copy.mjs --variant=web /tmp/test-web --force
 `);
@@ -37,7 +42,7 @@ Examples:
 }
 
 function parseArgs(argv) {
-  const args = { variant: null, target: null, force: false, dryRun: false, help: false };
+  const args = { variant: null, target: null, agentConfig: "both", force: false, dryRun: false, help: false };
   const positional = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -46,10 +51,16 @@ function parseArgs(argv) {
     else if (a === "--help" || a === "-h") args.help = true;
     else if (a.startsWith("--variant=")) args.variant = a.slice("--variant=".length);
     else if (a === "--variant" && argv[i + 1]) args.variant = argv[++i];
+    else if (a.startsWith("--agent-config=")) args.agentConfig = a.slice("--agent-config=".length);
+    else if (a === "--agent-config" && argv[i + 1]) args.agentConfig = argv[++i];
     else if (a.startsWith("--")) {
       console.error(`Unknown option: ${a}`);
       usageAndExit(1);
     } else positional.push(a);
+  }
+  if (!["opencode", "omp", "both"].includes(args.agentConfig)) {
+    console.error(`Invalid --agent-config: ${args.agentConfig} (expected opencode, omp, or both)`);
+    usageAndExit(1);
   }
   if (positional.length > 0) args.target = positional[0];
   if (positional.length > 1) {
@@ -128,8 +139,22 @@ function filesEqual(a, b) {
   return a === b;
 }
 
-function buildMergeBlock(variant, rel, sharedContent, variantContent) {
-  const parts = [];
+/**
+ * When a single agent-tool config is installed (--agent-config=opencode|omp),
+ * strip references to the other tree from merge content (AGENTS.md/CLAUDE.md).
+ * Deterministic line-level rewrite; safe to run when the other tree is absent.
+ */
+function adaptMergeContent(content, agentConfig) {
+  if (!content || agentConfig === "both") return content;
+  const drop = agentConfig === "omp" ? ".opencode" : ".omp";
+  const lines = content.split("\n");
+  return lines
+    .filter((l) => !l.includes(drop))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n");
+}
+
+function buildMergeBlock(variant, rel, sharedContent, variantContent) {  const parts = [];
   const sources = [];
   if (sharedContent != null) {
     parts.push(sharedContent.trimEnd());
@@ -215,6 +240,17 @@ function main() {
   const sharedFiles = walkFiles(sharedDir, sharedDir).filter((f) => !MERGE_RELS.has(f.rel));
   const variantFiles = walkFiles(variantDir, variantDir).filter((f) => !MERGE_RELS.has(f.rel));
 
+  // Filter agent-tool config trees by --agent-config (default: both)
+  const skipAgentDirs =
+    args.agentConfig === "opencode" ? [".omp"] : args.agentConfig === "omp" ? [".opencode"] : [];
+  const agentConfigFilter = (f) =>
+    !skipAgentDirs.some((d) => f.rel === d || f.rel.startsWith(d + "/"));
+  for (const list of [sharedFiles, variantFiles]) {
+    for (let i = list.length - 1; i >= 0; i--) {
+      if (!agentConfigFilter(list[i])) list.splice(i, 1);
+    }
+  }
+
   // Build file map: rel -> { full, isVariant }
   const fileMap = new Map();
   for (const f of sharedFiles) fileMap.set(f.rel, { full: f.full, isVariant: false });
@@ -236,7 +272,10 @@ function main() {
   for (const rel of MERGE_RELS) {
     const src = mergeSources[rel];
     if (!src) continue;
-    const block = buildMergeBlock(variant, rel, src.sharedContent, src.variantContent);
+    const block = adaptMergeContent(
+      buildMergeBlock(variant, rel, src.sharedContent, src.variantContent),
+      args.agentConfig
+    );
     const targetFile = path.join(targetDir, rel);
     const existing = readTextOrNull(targetFile);
     const { next, changed, mode } = mergeIntoTarget(existing, variant, rel, block);

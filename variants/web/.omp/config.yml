@@ -1,0 +1,48 @@
+# Project-local OMP config — copied via agentic-dev, not global ~/.omp/agent
+# Port of the OpenCode policy in the old .opencode/opencode.jsonc.
+# Mapping:
+#   opencode permission.default: "ask"  -> tools.approvalMode: write (auto read+write, prompt exec)
+#   opencode permission.allow           -> bash.patterns allow rules (lower matched commands to
+#                                          write tier: auto-approved in main session AND in
+#                                          headless subagents, which run yolo)
+#   opencode permission.deny            -> bash.patterns deny rules (enforced in every mode,
+#                                          including yolo subagents; rm -rf / etc. is also
+#                                          already blocked by OMP's critical-command guard)
+# Model routing lives in agent frontmatter (model: "@smol" / "@default") and modelRoles.
+
+tools:
+  approvalMode: write # auto-approve read + edit (write tier); prompt on exec (bash, task, browser, ...)
+  approval:
+    read: allow
+    edit: allow
+    task: allow # exec-tier gate blocks subagent dispatch under approvalMode: write with no UI
+    #            (and prompts every dispatch interactively). The workflow depends on task,
+    #            so auto-approve it; subagents themselves run headless yolo.
+# NOTE: do NOT set tools.approval.bash: prompt here — headless subagents cannot answer
+# approval prompts, so it would reject every bash call they make. bash.patterns below
+# is the per-command policy.
+
+bash:
+  patterns:
+    # Routine commands the model may run without prompting (allow must match the WHOLE command)
+    - match: "pnpm *"
+      approval: allow
+    - match: "npm *"
+      approval: allow
+    - match: "node *"
+      approval: allow
+    - match: "git status*"
+      approval: allow
+    - match: "git diff*"
+      approval: allow
+    - match: "git log*"
+      approval: allow
+    # Absolute denies (pattern fires on whole command OR any compound segment)
+    - match: "git push*"
+      approval: deny
+    - match: "npm publish*"
+      approval: deny
+    - match: "rm -rf /*"
+      approval: deny
+    - match: "rm -rf ~*"
+      approval: deny

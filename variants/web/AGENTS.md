@@ -27,7 +27,7 @@ Add `debugger` tournament (2-3 hypotheses) only for: arch changes, auth, migrati
 7. **Independent reviewer** — fresh context, **no implementer reasoning**, diff + outputs + `docs/quality-gates.md`. Findings require severity + location + rule violated + reproduce + minimal correction. Max 2 review→fix cycles, then replan.
 8. **Verifier** — read-only evidence table: acceptance, typecheck, lint, tests, build, a11y, unexpected files, dependencies, risks, human decisions. Only then ship.
 
-## Permissions (enforced via .opencode/opencode.jsonc, also via auto + deny)
+## Permissions (enforced via `.opencode/opencode.jsonc` in opencode, `.omp/config.yml` in OMP; also via auto + deny)
 
 Allow: read, edit inside worktree, typecheck/lint/test/build, git status/diff
 Ask: install dependency, git commit, DB migration
@@ -43,7 +43,9 @@ Proceed automatically for reversible local edits, existing patterns, fixing dete
 - `docs/quality-gates.md` — gates + anti-cheat
 - `docs/testing-strategy.md`
 - `docs/accessibility-standards.md`
-- `.opencode/agents/*.md` — role prompts
-- `.opencode/commands/*.md` — `/task`, `/implement`, `/review`, `/verify`, `/debug`
+- `.opencode/agents/*.md` — role prompts (opencode)
+- `.opencode/commands/*.md` — `/task`, `/implement`, `/review`, `/verify`, `/debug` (opencode)
+- `.omp/agents/*.md` — role prompts (OMP)
+- `.omp/commands/*.md` — `/task`, `/implement`, `/review`, `/verify`, `/debug` (OMP)
 
 > Source: `agentic-dev/variants/web/AGENTS.md` • variant=web • project-local, file-only
