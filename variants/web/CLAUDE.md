@@ -6,5 +6,6 @@ Concise. Load docs on demand.
 - Workflow is evidence-gated (see `AGENTS.md` + `docs/quality-gates.md`). No global config.
 - Commands are project-local under `.opencode/commands/*.md` (opencode). Run them in isolated worktree/branch per task.
 - Commands are project-local under `.omp/commands/*.md` (OMP). Run them in isolated worktree/branch per task.
+- A verifier PASS is evidence to ship, not publication; the owner (or a durable Lead role) publishes.
 
 > Source: `agentic-dev/variants/web/CLAUDE.md`
