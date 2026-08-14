@@ -23,7 +23,7 @@ session runs per task. It composes with — does not replace — a project's
 ownership roles and durable handoff (see "Composing with an existing workflow"
 below). A greenfield project with no existing workflow uses it as-is.
 
-1. **Task contract** — fill `docs/task-contract-template.md` → `docs/tasks/<slug>.md`. Must include Goal, Acceptance Criteria (Given/When/Then), Non-Goals, Required Verification, Change Budget (max files/lines), Decisions needing human.
+1. **Task contract** — create or draft a Linear ticket (`linear_save_issue`) with description from `docs/task-contract-template.md`. Must include Goal, Acceptance Criteria (Given/When/Then), Non-Goals, Required Verification, Change Budget (max files/lines), Decisions needing human.
 2. **Reconnaissance** — read-only agents in parallel: codebase explorer, test archaeologist, dependency scout, risk analyst. Output is facts (`Relevant files:` … `Unresolved decisions:`), not implementation.
 3. **Plan** — read-only planner: files to change, order, tests, risks/rollback, assumptions vs. decisions needing you.
 4. **Test author** — separate context, from **acceptance criteria**, fails before implementation. Includes happy/error, keyboard, focus, a11y, responsive.
@@ -51,10 +51,10 @@ replacement for them:
 - **`/ship-report` ≠ publish**: the verifier's PASS is evidence for the
   owner/Lead's authoritative gate; publication is a separate, separately
   authorized step.
-- **Task files**: `docs/task-contract-template.md` is the planning contract
-  (Goal, Given/When/Then, Change Budget, Decisions). A project's own task-file
-  format is the durable container that carries state; fold the contract into
-  it rather than maintaining two parallel task files.
+- **Task tracking**: `docs/task-contract-template.md` is the planning contract
+  (Goal, Given/When/Then, Change Budget, Decisions) placed into the Linear ticket
+  description via Linear MCP. Tasks are tracked as Linear issues with status
+  and comments carrying workflow evidence.
 
 A greenfield project with no existing workflow uses this pipeline as-is.
 

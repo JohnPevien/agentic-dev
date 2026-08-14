@@ -1,7 +1,6 @@
-# Task Contract Template
+# Task Contract Template (Linear Issue Description)
 
-Copy this file to `docs/tasks/<slug>.md` and fill before editing code. The contract is the source of truth — not the implementer's summary.
-
+Use this template as the description body when creating or drafting a Linear ticket (`linear_save_issue`). The contract in the Linear issue is the source of truth — not the implementer's summary.
 ```md
 # Goal
 
