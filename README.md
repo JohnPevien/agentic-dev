@@ -56,6 +56,8 @@ Add a new variant: `mkdir -p variants/<name> && cp -R variants/web/* variants/<n
 
 See `variants/web/AGENTS.md` for the concise lazy-ref entrypoint and `variants/web/.opencode/opencode.jsonc` for permissions (auto + deny: `.env`, `git push`, `rm -rf /`).
 
+**Composition.** This pipeline is a stateless execution toolkit. A greenfield project uses it as-is; a project with an existing durable workflow (ownership roles, a handoff, a state machine) composes with it — the project's roles govern, the toolkit's subagents execute, and a verifier PASS is evidence (not publication). See `variants/web/AGENTS.md` → "Composing with an existing workflow."
+
 **Improvements over original 27k spec (firm, critical):**
 
 - **Project-local first, global optional.** Original pushed global `~/.config/opencode`; this pack is file-only project-local per your "no global config" — global is thin override, not source of truth.

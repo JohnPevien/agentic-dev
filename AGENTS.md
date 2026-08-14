@@ -26,3 +26,15 @@ This `AGENTS.md` governs **work inside `agentic-dev`**. The `variants/*/AGENTS.m
    # re-run should be idempotent (no duplicate tag)
    node scripts/copy.mjs --variant=web /tmp/test-web && grep -c "agentic-dev:web:start" /tmp/test-web/AGENTS.md # → 1
    ```
+7. **Agent-tool config is a copy-time option** — `--agent-config=<opencode|omp|both>` (default `both`):
+   - `opencode` → installs `.opencode/` only (agents, commands, skills, config)
+   - `omp` → installs `.omp/` only (agents, commands, skills, `config.yml`)
+   - `both` → installs both trees
+   Merge files (AGENTS.md/CLAUDE.md) are adapted to reference only the installed tree.
+   ```bash
+   node scripts/copy.mjs --variant=web /tmp/test-web --agent-config=omp
+   # expect: no .opencode/ files copied; AGENTS.md block has no .opencode references
+   node scripts/copy.mjs --variant=web /tmp/test-web --agent-config=opencode
+   # expect: no .omp/ files copied; AGENTS.md block has no .omp references
+   # re-runs with the same flag stay idempotent (one tag, SKIP everything)
+   ```
