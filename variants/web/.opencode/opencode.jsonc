@@ -26,14 +26,16 @@
     ]
   },
   "agents": {
-    // Model routing: use cheap tier for volume, expensive only for architecture/security review
-    // Set via /models; example ids below are placeholders — replace with your account's exposed IDs
-    "planner": { "model": "your-smol-model", "permission": { "edit": "deny" } },
-    "test-author": { "model": "your-smol-model", "permission": { "edit": "allow" } },
-    "implementer": { "model": "your-smol-model" },
-    "reviewer": { "model": "your-default-model", "permission": { "edit": "deny" } },
-    "verifier": { "model": "your-smol-model", "permission": { "edit": "deny" } },
-    "debugger": { "model": "your-smol-model" }
+    // Model routing: use cheap tier for volume, expensive only for architecture/security review.
+    // Set a per-agent "model" via /models using YOUR account's IDs. Do NOT hardcode real
+    // model IDs in this public repo. Example:
+    //   "planner": { "model": "your-provider/your-model", "permission": { "edit": "deny" } }
+    "planner": { "permission": { "edit": "deny" } },
+    "test-author": { "permission": { "edit": "allow" } },
+    "implementer": {},
+    "reviewer": { "permission": { "edit": "deny" } },
+    "verifier": { "permission": { "edit": "deny" } },
+    "debugger": {}
   },
   "instructions": [
     "AGENTS.md",
