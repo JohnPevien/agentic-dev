@@ -11,7 +11,7 @@ This `AGENTS.md` governs **work inside `agentic-dev`**. The `variants/*/AGENTS.m
 3. **Copy semantics** (see `scripts/copy.mjs`):
    - Missing → copy
    - Same → skip
-   - `AGENTS.md` / `CLAUDE.md` differs → merge/patch wrapped with `<!-- agentic-dev:<variant>:start -->` … `<!-- agentic-dev:end -->`, idempotent
+   - `AGENTS.md` / `CLAUDE.md` / `.gitignore` differs → merge/patch wrapped with `<!-- agentic-dev:<variant>:start -->` … `<!-- agentic-dev:end -->`, idempotent
    - Other differs → WARN + skip unless `--force`
 
 4. **No web baseline here**: Don't add `package.json` dependencies for Next.js / Expo. This repo is an **agent pack** only. Web apps consume it via `node scripts/copy.mjs --variant=web <target>`.
@@ -25,16 +25,4 @@ This `AGENTS.md` governs **work inside `agentic-dev`**. The `variants/*/AGENTS.m
    node scripts/copy.mjs --variant=web /tmp/test-web && cat /tmp/test-web/AGENTS.md
    # re-run should be idempotent (no duplicate tag)
    node scripts/copy.mjs --variant=web /tmp/test-web && grep -c "agentic-dev:web:start" /tmp/test-web/AGENTS.md # → 1
-   ```
-7. **Agent-tool config is a copy-time option** — `--agent-config=<opencode|omp|both>` (default `both`):
-   - `opencode` → installs `.opencode/` only (agents, commands, skills, config)
-   - `omp` → installs `.omp/` only (agents, commands, skills, `config.yml`)
-   - `both` → installs both trees
-   Merge files (AGENTS.md/CLAUDE.md) are adapted to reference only the installed tree.
-   ```bash
-   node scripts/copy.mjs --variant=web /tmp/test-web --agent-config=omp
-   # expect: no .opencode/ files copied; AGENTS.md block has no .opencode references
-   node scripts/copy.mjs --variant=web /tmp/test-web --agent-config=opencode
-   # expect: no .omp/ files copied; AGENTS.md block has no .omp references
-   # re-runs with the same flag stay idempotent (one tag, SKIP everything)
    ```

@@ -46,9 +46,24 @@ try {
   assert(agentsWeb.includes("_shared/AGENTS.md") && agentsWeb.includes("variants/web/AGENTS.md"), "source line missing");
   const countWebStart = (agentsWeb.match(/agentic-dev:web:start/g) || []).length;
   assert(countWebStart === 1, `expected 1 web start tag, got ${countWebStart}`);
-  // shared skill copied
-  assert(fs.existsSync(path.join(tmpBase, "web1", ".agents/skills/example/SKILL.md")), "shared skill missing");
-  assert(fs.existsSync(path.join(tmpBase, "web1", ".agents/skills/web/SKILL.md")), "web skill missing");
+  // .agentic-dev/ structure installed
+  assert(fs.existsSync(path.join(tmpBase, "web1", ".agentic-dev/orchestration.md")), "orchestration.md missing");
+  assert(fs.existsSync(path.join(tmpBase, "web1", ".agentic-dev/constraints.md")), "constraints.md missing");
+  assert(fs.existsSync(path.join(tmpBase, "web1", ".agentic-dev/roles/planner.md")), "planner role missing");
+  assert(fs.existsSync(path.join(tmpBase, "web1", ".agentic-dev/roles/reviewer.md")), "reviewer role missing");
+  assert(fs.existsSync(path.join(tmpBase, "web1", ".agentic-dev/roles/debugger.md")), "debugger role missing");
+  assert(fs.existsSync(path.join(tmpBase, "web1", ".agentic-dev/roles/test-author.md")), "test-author role missing");
+  assert(fs.existsSync(path.join(tmpBase, "web1", ".agentic-dev/roles/implementer.md")), "implementer role missing");
+  assert(fs.existsSync(path.join(tmpBase, "web1", ".agentic-dev/roles/verifier.md")), "verifier role missing");
+  assert(fs.existsSync(path.join(tmpBase, "web1", ".agentic-dev/reference/quality-gates.md")), "quality-gates reference missing");
+  assert(fs.existsSync(path.join(tmpBase, "web1", ".agentic-dev/reference/architecture.md")), "architecture reference missing (web override)");
+  // .gitignore merged with .agentic-dev/run/
+  const gitignoreWeb = fs.readFileSync(path.join(tmpBase, "web1", ".gitignore"), "utf8");
+  assert(gitignoreWeb.includes(".agentic-dev/run/"), ".gitignore missing .agentic-dev/run/");
+  assert(gitignoreWeb.includes("agentic-dev:web:start"), ".gitignore missing merge tag");
+  // no old trees
+  assert(!fs.existsSync(path.join(tmpBase, "web1", ".opencode")), ".opencode/ should not exist");
+  assert(!fs.existsSync(path.join(tmpBase, "web1", ".omp")), ".omp/ should not exist");
   console.log("PASS real copy web");
 
   // 4. idempotency
@@ -58,18 +73,26 @@ try {
   const count2 = (agentsWeb2.match(/agentic-dev:web:start/g) || []).length;
   assert(count2 === 1, `idempotency: expected 1, got ${count2}`);
   assert(agentsWeb === agentsWeb2, "idempotency: content changed on rerun");
+  const gitignoreWeb2 = fs.readFileSync(path.join(tmpBase, "web1", ".gitignore"), "utf8");
+  const gitignoreCount2 = (gitignoreWeb2.match(/agentic-dev:web:start/g) || []).length;
+  assert(gitignoreCount2 === 1, `idempotency .gitignore: expected 1 tag, got ${gitignoreCount2}`);
   console.log("PASS idempotency");
 
   // 5. merge with existing content
   const mergeDir = path.join(tmpBase, "merge-test");
   fs.mkdirSync(mergeDir, { recursive: true });
   fs.writeFileSync(path.join(mergeDir, "AGENTS.md"), "# My Project\nCustom rules.\n", "utf8");
+  fs.writeFileSync(path.join(mergeDir, ".gitignore"), "node_modules/\n", "utf8");
   const mergeRun = runCopy("web", mergeDir);
   assert(mergeRun.status === 0, `merge run failed: ${mergeRun.stderr}`);
   const merged = fs.readFileSync(path.join(mergeDir, "AGENTS.md"), "utf8");
   assert(merged.startsWith("# My Project"), "merge should preserve existing header");
   assert(merged.includes("Custom rules"), "merge should preserve custom rules");
   assert(merged.includes("agentic-dev:web:start"), "merge should append tag block at end");
+  const mergedGitignore = fs.readFileSync(path.join(mergeDir, ".gitignore"), "utf8");
+  assert(mergedGitignore.includes("node_modules/"), "gitignore merge should preserve existing entries");
+  assert(mergedGitignore.includes(".agentic-dev/run/"), "gitignore merge should append pack entry");
+  assert(mergedGitignore.includes("agentic-dev:web:start"), "gitignore merge should have tag");
   console.log("PASS merge with existing");
 
   // 6. WARN vs --force for non-merge files
@@ -78,14 +101,14 @@ try {
   // first copy
   runCopy("web", warnDir);
   // tamper a non-merge file
-  const skillPath = path.join(warnDir, ".agents/skills/example/SKILL.md");
-  fs.writeFileSync(skillPath, "tampered", "utf8");
+  const rolePath = path.join(warnDir, ".agentic-dev/roles/planner.md");
+  fs.writeFileSync(rolePath, "tampered", "utf8");
   const warnRun = runCopy("web", warnDir);
   assert(warnRun.stdout.includes("WARN"), "should WARN on differing non-merge file");
-  assert(fs.readFileSync(skillPath, "utf8") === "tampered", "WARN should not overwrite");
+  assert(fs.readFileSync(rolePath, "utf8") === "tampered", "WARN should not overwrite");
   const forceRun = runCopy("web", warnDir, ["--force"]);
   assert(forceRun.stdout.includes("OVERWRITE"), "force should overwrite");
-  assert(fs.readFileSync(skillPath, "utf8") !== "tampered", "force should overwrite content");
+  assert(fs.readFileSync(rolePath, "utf8") !== "tampered", "force should overwrite content");
   console.log("PASS WARN/--force");
 
   // 7. expo variant
@@ -93,7 +116,10 @@ try {
   assert(expoRun.status === 0, `expo copy failed: ${expoRun.stderr}`);
   const agentsExpo = fs.readFileSync(path.join(tmpBase, "expo1", "AGENTS.md"), "utf8");
   assert(agentsExpo.includes("agentic-dev:expo:start"), "expo tag missing");
-  assert(fs.existsSync(path.join(tmpBase, "expo1", ".agents/skills/expo/SKILL.md")), "expo skill missing");
+  assert(fs.existsSync(path.join(tmpBase, "expo1", ".agentic-dev/roles/planner.md")), "expo role missing");
+  assert(fs.existsSync(path.join(tmpBase, "expo1", ".agentic-dev/orchestration.md")), "expo orchestration missing");
+  assert(!fs.existsSync(path.join(tmpBase, "expo1", ".opencode")), "expo should not have .opencode");
+  assert(!fs.existsSync(path.join(tmpBase, "expo1", ".omp")), "expo should not have .omp");
   console.log("PASS expo variant");
 
   // 8. global guard — should refuse HOME

@@ -5,7 +5,7 @@
  * Copies `variants/_shared` + `variants/<variant>` into <target>.
  * - Missing → COPY
  * - Same → SKIP
- * - AGENTS.md / CLAUDE.md differs → MERGE with tag <!-- agentic-dev:<variant>:start --> ... <!-- agentic-dev:end --> (idempotent)
+ * - AGENTS.md / CLAUDE.md / .gitignore differs → MERGE with tag <!-- agentic-dev:<variant>:start --> ... <!-- agentic-dev:end --> (idempotent)
  * - Other differs → WARN + skip unless --force (then OVERWRITE)
  * - --dry-run lists without writing
  * - Never writes outside <target>, never touches ~ / ~/.claude / ~/.config / ~/.agents
@@ -24,17 +24,12 @@ function usageAndExit(code = 1) {
 
 Options:
   --variant=<name>       Required. Variant folder under variants/ (e.g. web, expo)
-  --agent-config=<mode>  Which agent-tool config to install (default: both)
-                         opencode  -> .opencode/ only (agents, commands, skills, config)
-                         omp       -> .omp/ only (agents, commands, skills, config.yml)
-                         both      -> both trees
   --force                Overwrite non-merge files that differ (default: skip + WARN)
   --dry-run              Print what would happen, write nothing
   --help, -h             Show this help
 
 Examples:
   node scripts/copy.mjs --variant=web /path/to/my-new-web-project
-  node scripts/copy.mjs --variant=web /tmp/my-project --agent-config=omp
   node scripts/copy.mjs --variant=expo /tmp/test-expo --dry-run
   node scripts/copy.mjs --variant=web /tmp/test-web --force
 `);
@@ -42,7 +37,7 @@ Examples:
 }
 
 function parseArgs(argv) {
-  const args = { variant: null, target: null, agentConfig: "both", force: false, dryRun: false, help: false };
+  const args = { variant: null, target: null, force: false, dryRun: false, help: false };
   const positional = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -51,16 +46,10 @@ function parseArgs(argv) {
     else if (a === "--help" || a === "-h") args.help = true;
     else if (a.startsWith("--variant=")) args.variant = a.slice("--variant=".length);
     else if (a === "--variant" && argv[i + 1]) args.variant = argv[++i];
-    else if (a.startsWith("--agent-config=")) args.agentConfig = a.slice("--agent-config=".length);
-    else if (a === "--agent-config" && argv[i + 1]) args.agentConfig = argv[++i];
     else if (a.startsWith("--")) {
       console.error(`Unknown option: ${a}`);
       usageAndExit(1);
     } else positional.push(a);
-  }
-  if (!["opencode", "omp", "both"].includes(args.agentConfig)) {
-    console.error(`Invalid --agent-config: ${args.agentConfig} (expected opencode, omp, or both)`);
-    usageAndExit(1);
   }
   if (positional.length > 0) args.target = positional[0];
   if (positional.length > 1) {
@@ -85,20 +74,17 @@ function assertNotGlobalPath(p) {
       "/tmp",
     ].filter(Boolean)
   );
-  // Also forbid any parent of agentic-dev's own config? No — target can be inside ~/git-repositories but not this repo itself? Allow, but warn if target === REPO_ROOT
   if (forbidden.has(resolved)) {
     console.error(`Refusing to write to global/forbidden path: ${resolved}`);
     console.error(`This copier is project-local — it only writes inside the target project dir you pass.`);
     process.exit(2);
   }
-  // Also reject if target resolves to home subpath that is exactly .claude or .config etc.
   for (const f of forbidden) {
     if (resolved === f) {
       console.error(`Refusing forbidden path: ${resolved}`);
       process.exit(2);
     }
   }
-  // Reject if target is empty
   if (!resolved || resolved === ".") {
     console.error(`Invalid target: ${p}`);
     process.exit(2);
@@ -133,28 +119,8 @@ function readTextOrNull(p) {
   }
 }
 
-function filesEqual(a, b) {
-  if (a === b) return true;
-  if (a == null || b == null) return false;
-  return a === b;
-}
-
-/**
- * When a single agent-tool config is installed (--agent-config=opencode|omp),
- * strip references to the other tree from merge content (AGENTS.md/CLAUDE.md).
- * Deterministic line-level rewrite; safe to run when the other tree is absent.
- */
-function adaptMergeContent(content, agentConfig) {
-  if (!content || agentConfig === "both") return content;
-  const drop = agentConfig === "omp" ? ".opencode" : ".omp";
-  const lines = content.split("\n");
-  return lines
-    .filter((l) => !l.includes(drop))
-    .join("\n")
-    .replace(/\n{3,}/g, "\n\n");
-}
-
-function buildMergeBlock(variant, rel, sharedContent, variantContent) {  const parts = [];
+function buildMergeBlock(variant, rel, sharedContent, variantContent) {
+  const parts = [];
   const sources = [];
   if (sharedContent != null) {
     parts.push(sharedContent.trimEnd());
@@ -176,11 +142,14 @@ function mergeIntoTarget(existing, variant, rel, block) {
   const end = `<!-- agentic-dev:end -->`;
   const startEsc = start.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const endEsc = end.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const re = new RegExp(`${startEsc}[\\s\\S]*?${endEsc}`, "m");
+  // Greedy match: from the start tag to the LAST end tag in the file.
+  // Non-greedy would stop at a literal end-tag string inside the merged
+  // content (e.g. _shared/AGENTS.md documents the tag format as text),
+  // causing the regex to match only part of the block and break idempotency.
+  const re = new RegExp(`${startEsc}[\\s\\S]*${endEsc}`);
   if (existing != null && re.test(existing)) {
     // replace existing block
     const next = existing.replace(re, block);
-    // if unchanged, skip
     if (next === existing) return { next, changed: false, mode: "SKIP" };
     return { next, changed: true, mode: "MERGE" };
   }
@@ -188,9 +157,21 @@ function mergeIntoTarget(existing, variant, rel, block) {
   const sep = existing == null || existing === "" ? "" : existing.endsWith("\n") ? "\n" : "\n\n";
   const prefix = existing == null ? "" : existing;
   const next = `${prefix}${sep}${block}\n`;
-  // if existing was null, this is COPY (new file) but we report as MERGE/COPY
   const mode = existing == null ? "COPY" : "MERGE";
   return { next, changed: true, mode };
+}
+
+/**
+ * .gitignore is a merge file but with simpler content: we append the
+ * gitignore entries the pack needs (.agentic-dev/run/) wrapped in the
+ * merge tag. Unlike AGENTS.md/CLAUDE.md, there's no shared+variant split —
+ * just a fixed block of entries.
+ */
+function buildGitignoreBlock(variant) {
+  const start = `<!-- agentic-dev:${variant}:start -->`;
+  const end = `<!-- agentic-dev:end -->`;
+  const body = `.agentic-dev/run/`;
+  return `${start}\n${body}\n${end}`;
 }
 
 function main() {
@@ -222,8 +203,11 @@ function main() {
     process.exit(1);
   }
 
-  // Collect merge files specially
+  // Merge files: AGENTS.md and CLAUDE.md get shared+variant merged content.
+  // .gitignore gets a fixed gitignore-entries block (no shared/variant split).
   const MERGE_RELS = new Set(["AGENTS.md", "CLAUDE.md"]);
+  const GITIGNORE_REL = ".gitignore";
+
   // Read shared + variant content for merge rels
   const mergeSources = {};
   for (const rel of MERGE_RELS) {
@@ -236,20 +220,16 @@ function main() {
     }
   }
 
-  // Walk other files (non-merge)
-  const sharedFiles = walkFiles(sharedDir, sharedDir).filter((f) => !MERGE_RELS.has(f.rel));
-  const variantFiles = walkFiles(variantDir, variantDir).filter((f) => !MERGE_RELS.has(f.rel));
-
-  // Filter agent-tool config trees by --agent-config (default: both)
-  const skipAgentDirs =
-    args.agentConfig === "opencode" ? [".omp"] : args.agentConfig === "omp" ? [".opencode"] : [];
-  const agentConfigFilter = (f) =>
-    !skipAgentDirs.some((d) => f.rel === d || f.rel.startsWith(d + "/"));
-  for (const list of [sharedFiles, variantFiles]) {
-    for (let i = list.length - 1; i >= 0; i--) {
-      if (!agentConfigFilter(list[i])) list.splice(i, 1);
-    }
-  }
+  // Walk other files (non-merge). This now picks up .agentic-dev/** from both
+  // _shared and variant dirs. Variant files with the same relative path override
+  // shared files (e.g. web/.agentic-dev/reference/architecture.md overrides
+  // _shared/.agentic-dev/reference/architecture.md).
+  const sharedFiles = walkFiles(sharedDir, sharedDir).filter(
+    (f) => !MERGE_RELS.has(f.rel) && f.rel !== GITIGNORE_REL
+  );
+  const variantFiles = walkFiles(variantDir, variantDir).filter(
+    (f) => !MERGE_RELS.has(f.rel) && f.rel !== GITIGNORE_REL
+  );
 
   // Build file map: rel -> { full, isVariant }
   const fileMap = new Map();
@@ -268,14 +248,11 @@ function main() {
   console.log(`variant: ${variantDir}`);
   console.log("");
 
-  // Handle merge files first
+  // Handle merge files first (AGENTS.md, CLAUDE.md)
   for (const rel of MERGE_RELS) {
     const src = mergeSources[rel];
     if (!src) continue;
-    const block = adaptMergeContent(
-      buildMergeBlock(variant, rel, src.sharedContent, src.variantContent),
-      args.agentConfig
-    );
+    const block = buildMergeBlock(variant, rel, src.sharedContent, src.variantContent);
     const targetFile = path.join(targetDir, rel);
     const existing = readTextOrNull(targetFile);
     const { next, changed, mode } = mergeIntoTarget(existing, variant, rel, block);
@@ -297,11 +274,34 @@ function main() {
     }
   }
 
-  // Handle regular files
+  // Handle .gitignore merge (fixed block, no shared/variant split)
+  {
+    const block = buildGitignoreBlock(variant);
+    const targetFile = path.join(targetDir, GITIGNORE_REL);
+    const existing = readTextOrNull(targetFile);
+    const { next, changed, mode } = mergeIntoTarget(existing, variant, GITIGNORE_REL, block);
+    if (!changed) {
+      log("SKIP", GITIGNORE_REL, "(identical block)");
+      counts.skip++;
+    } else {
+      if (mode === "COPY") {
+        log("COPY", GITIGNORE_REL, "(new merge block)");
+        counts.copy++;
+      } else {
+        log(mode, GITIGNORE_REL, existing == null ? "(new)" : "(merge/patch)");
+        if (mode === "MERGE") counts.merge++;
+      }
+      if (!args.dryRun) {
+        ensureDirFor(targetFile);
+        fs.writeFileSync(targetFile, next, "utf8");
+      }
+    }
+  }
+
+  // Handle regular files (.agentic-dev/** etc.)
   for (const [rel, { full }] of fileMap) {
     const targetFile = path.join(targetDir, rel);
     const srcContent = fs.readFileSync(full); // binary-safe
-    const srcText = srcContent.toString("utf8");
     const exists = fs.existsSync(targetFile);
     if (!exists) {
       log("COPY", rel);
@@ -334,7 +334,6 @@ function main() {
   if (counts.warn > 0 && !args.force) {
     console.log(`Tip: re-run with --force to overwrite WARN files, or --dry-run to preview.`);
   }
-  // For AGENTS.md/CLAUDE.md, idempotency check hint
   if (!args.dryRun) {
     console.log(`Verify idempotency: re-run same command; AGENTS.md should still have one <!-- agentic-dev:${variant}:start --> block.`);
   }
