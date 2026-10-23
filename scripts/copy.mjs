@@ -8,7 +8,7 @@
  * - AGENTS.md / CLAUDE.md / .gitignore differs → MERGE with tag <!-- agentic-dev:<variant>:start --> ... <!-- agentic-dev:end --> (idempotent)
  * - Other differs → WARN + skip unless --force (then OVERWRITE)
  * - --dry-run lists without writing
- * - Never writes outside <target>, never touches ~ / ~/.claude / ~/.config / ~/.agents
+ * - Never writes outside <target>, never touches ~ / ~/.muse / ~/.claude / ~/.config / ~/.agents
  */
 
 import fs from "node:fs";
@@ -60,11 +60,20 @@ function parseArgs(argv) {
 }
 
 function assertNotGlobalPath(p) {
-  const resolved = path.resolve(p);
+  // Canonicalize so a symlinked path can't dodge the denylist.
+  const canonical = (x) => {
+    try {
+      return fs.realpathSync(x);
+    } catch {
+      return path.resolve(x);
+    }
+  };
+  const resolved = canonical(p);
   const home = process.env.HOME || process.env.USERPROFILE || "";
   const forbidden = new Set(
     [
       home,
+      path.join(home, ".muse"),
       path.join(home, ".claude"),
       path.join(home, ".config"),
       path.join(home, ".agents"),
@@ -72,18 +81,14 @@ function assertNotGlobalPath(p) {
       path.join(home, ".gitconfig-personal"),
       "/",
       "/tmp",
-    ].filter(Boolean)
+    ]
+      .filter(Boolean)
+      .map(canonical)
   );
   if (forbidden.has(resolved)) {
     console.error(`Refusing to write to global/forbidden path: ${resolved}`);
     console.error(`This copier is project-local — it only writes inside the target project dir you pass.`);
     process.exit(2);
-  }
-  for (const f of forbidden) {
-    if (resolved === f) {
-      console.error(`Refusing forbidden path: ${resolved}`);
-      process.exit(2);
-    }
   }
   if (!resolved || resolved === ".") {
     console.error(`Invalid target: ${p}`);
@@ -142,12 +147,18 @@ function mergeIntoTarget(existing, variant, rel, block) {
   const end = `<!-- agentic-dev:end -->`;
   const startEsc = start.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const endEsc = end.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  // Greedy match: from the start tag to the LAST end tag in the file.
-  // Non-greedy would stop at a literal end-tag string inside the merged
-  // content (e.g. _shared/AGENTS.md documents the tag format as text),
-  // causing the regex to match only part of the block and break idempotency.
-  const re = new RegExp(`${startEsc}[\\s\\S]*${endEsc}`);
+  // Non-greedy match to the FIRST end tag at line start. Line-anchoring keeps
+  // an inline end-tag string inside merged content (e.g. _shared/AGENTS.md
+  // documents the tag format as text) from truncating the match.
+  const re = new RegExp(`${startEsc}[\\s\\S]*?^${endEsc}`, "m");
   if (existing != null && re.test(existing)) {
+    // Two start tags means two blocks — replacing only the first would orphan
+    // the second, so fail loudly instead of silently eating content.
+    const startCount = existing.split(start).length - 1;
+    if (startCount !== 1) {
+      console.error(`Refusing to merge ${rel}: found ${startCount} ${start} tags (expected 1). Remove the duplicate block by hand.`);
+      process.exit(1);
+    }
     // replace existing block
     const next = existing.replace(re, block);
     if (next === existing) return { next, changed: false, mode: "SKIP" };
